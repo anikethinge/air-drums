@@ -1,0 +1,1505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Air Drums — Play Drums with Your Hands</title>
+<meta name="description" content="A lightweight browser-based Air Drum game using your webcam and MediaPipe Hands tracking. Play 8 drum pads in real-time with hand gestures.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+/* ── Reset & Theme ───────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+:root {
+  --bg-deep:      #07070d;
+  --bg-surface:   #10101c;
+  --bg-glass:     rgba(18, 18, 32, 0.75);
+  --border-subtle:rgba(255, 255, 255, 0.08);
+  --border-bright:rgba(255, 255, 255, 0.18);
+  --text-main:    #f3f4f8;
+  --text-muted:   #9ca3af;
+  --accent-cyan:  #06b6d4;
+  --accent-purple:#a855f7;
+  --accent-pink:  #ec4899;
+  --accent-green: #10b981;
+  --font-sans:    'Outfit', system-ui, -apple-system, sans-serif;
+  --font-mono:    'JetBrains Mono', monospace;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  height: 100dvh;
+  background: var(--bg-deep);
+  color: var(--text-main);
+  font-family: var(--font-sans);
+  overflow: hidden;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  height: 100dvh;
+  position: relative;
+}
+
+/* ── Top Navigation Bar ──────────────────────────────────── */
+header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 18px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-subtle);
+  z-index: 30;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand-icon {
+  font-size: 1.5rem;
+  filter: drop-shadow(0 0 10px rgba(168, 85, 247, 0.6));
+}
+
+.brand-text h1 {
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  background: linear-gradient(135deg, #38bdf8 0%, #c084fc 50%, #f472b6 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  line-height: 1.1;
+}
+
+.brand-text span {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+/* ── Top Controls ────────────────────────────────────────── */
+.top-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-family: var(--font-sans);
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+  white-space: nowrap;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #8b5cf6, #6366f1);
+  color: #fff;
+  box-shadow: 0 2px 14px rgba(139, 92, 246, 0.4);
+}
+
+.btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 20px rgba(139, 92, 246, 0.6);
+}
+
+.btn-primary.active {
+  background: linear-gradient(135deg, #10b981, #059669);
+  box-shadow: 0 2px 14px rgba(16, 185, 129, 0.4);
+}
+
+.btn-icon {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-main);
+  font-size: 1rem;
+}
+
+.btn-icon:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--border-bright);
+}
+
+.btn-icon.muted {
+  background: #ef4444;
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.4);
+}
+
+/* Volume control */
+.vol-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+}
+
+.vol-control label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.vol-control input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 74px;
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.15);
+  outline: none;
+}
+
+.vol-control input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent-cyan);
+  cursor: pointer;
+  box-shadow: 0 0 8px var(--accent-cyan);
+  border: 2px solid #fff;
+}
+
+/* Kit Selector */
+.kit-select {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-main);
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 6px 10px;
+  border-radius: 8px;
+  outline: none;
+  cursor: pointer;
+}
+.kit-select option {
+  background: #181828;
+  color: #fff;
+}
+
+/* Stats badge */
+.badge {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--accent-cyan);
+  background: rgba(6, 182, 212, 0.1);
+  border: 1px solid rgba(6, 182, 212, 0.25);
+  padding: 4px 8px;
+  border-radius: 6px;
+  min-width: 54px;
+  text-align: center;
+}
+
+/* ── Main Stage Area ─────────────────────────────────────── */
+#stage {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background: radial-gradient(circle at center, #131326 0%, #07070f 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Camera Video (mirrored selfie mode) */
+#cameraVideo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+  z-index: 1;
+  background: #000;
+  opacity: 0.88;
+}
+
+/* Landmarks Canvas overlay (drawn in stage coordinates) */
+#overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Drum Pad Layer */
+#padLayer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 3;
+  pointer-events: none;
+}
+
+/* ── Drum Pad Styles ─────────────────────────────────────── */
+.drum-pad {
+  position: absolute;
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: all;
+  cursor: pointer;
+  transform: translate(-50%, -50%) scale(1);
+  transition: transform 0.08s cubic-bezier(0.175, 0.885, 0.32, 1.275),
+              box-shadow 0.12s ease,
+              border-color 0.12s ease,
+              background-color 0.12s ease;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-width: 2.5px;
+  border-style: solid;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6), inset 0 0 16px rgba(255, 255, 255, 0.06);
+}
+
+.drum-pad::before {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  border-radius: 50%;
+  border: 1px dashed rgba(255, 255, 255, 0.25);
+  pointer-events: none;
+}
+
+.pad-title {
+  font-size: clamp(0.68rem, 1.8vmin, 0.95rem);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #fff;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+  line-height: 1.1;
+}
+
+.pad-key {
+  font-family: var(--font-mono);
+  font-size: clamp(0.55rem, 1.3vmin, 0.72rem);
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.6);
+  background: rgba(0, 0, 0, 0.4);
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-top: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  pointer-events: none;
+}
+
+/* Pad hit state */
+.drum-pad.hit {
+  transform: translate(-50%, -50%) scale(1.18) !important;
+  filter: brightness(2) saturate(1.4);
+}
+
+/* Ripple Shockwave */
+.ripple {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(0.2);
+  opacity: 0.9;
+  animation: shockwave 0.45s cubic-bezier(0.1, 0.8, 0.3, 1) forwards;
+  z-index: 4;
+}
+
+@keyframes shockwave {
+  0% {
+    transform: translate(-50%, -50%) scale(0.4);
+    opacity: 0.9;
+    border-width: 4px;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(2.6);
+    opacity: 0;
+    border-width: 1px;
+  }
+}
+
+/* Hit Toast notification on screen */
+#hit-feed {
+  position: absolute;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.hit-tag {
+  font-family: var(--font-sans);
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 4px 12px;
+  border-radius: 20px;
+  background: rgba(0, 0, 0, 0.65);
+  border: 1.5px solid currentColor;
+  box-shadow: 0 0 15px currentColor;
+  animation: tag-pop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+@keyframes tag-pop {
+  0% { transform: scale(0.6) translateY(8px); opacity: 0; }
+  40% { transform: scale(1.1) translateY(-2px); opacity: 1; }
+  100% { transform: scale(1) translateY(0); opacity: 0.85; }
+}
+
+/* ── Splash Welcome Screen ───────────────────────────────── */
+#splash {
+  position: absolute;
+  inset: 0;
+  z-index: 25;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at center, rgba(22, 22, 42, 0.96) 0%, rgba(8, 8, 15, 0.98) 100%);
+  text-align: center;
+  padding: 24px;
+  transition: opacity 0.4s ease, visibility 0.4s;
+}
+
+#splash.hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.splash-card {
+  max-width: 480px;
+  background: var(--bg-glass);
+  border: 1px solid var(--border-bright);
+  padding: 32px 28px;
+  border-radius: 24px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6), 0 0 40px rgba(168, 85, 247, 0.15);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.splash-icon {
+  font-size: 3.8rem;
+  margin-bottom: 12px;
+  display: inline-block;
+  animation: float-drum 3s ease-in-out infinite;
+}
+
+@keyframes float-drum {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-8px) rotate(3deg); }
+}
+
+.splash-title {
+  font-size: 1.9rem;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  margin-bottom: 8px;
+  background: linear-gradient(135deg, #38bdf8, #c084fc, #f472b6);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.splash-desc {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin-bottom: 22px;
+}
+
+.instructions-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  text-align: left;
+  margin-bottom: 24px;
+}
+
+.instruction-item {
+  background: rgba(255, 255, 255, 0.04);
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border-subtle);
+}
+
+.instruction-item strong {
+  display: block;
+  font-size: 0.78rem;
+  color: #fff;
+  margin-bottom: 3px;
+}
+
+.instruction-item span {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+  display: block;
+}
+
+.splash-start-btn {
+  width: 100%;
+  padding: 13px;
+  font-size: 1rem;
+  border-radius: 14px;
+}
+
+/* ── Loading Overlay ─────────────────────────────────────── */
+#loading-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 26;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(7, 7, 13, 0.9);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+#loading-overlay.show {
+  display: flex;
+}
+
+.spinner {
+  width: 52px;
+  height: 52px;
+  border: 4px solid rgba(255, 255, 255, 0.1);
+  border-top-color: var(--accent-purple);
+  border-right-color: var(--accent-cyan);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-bottom: 14px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-text {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.loading-sub {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+/* ── Help / Sensitivity Bar ──────────────────────────────── */
+#bottom-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 18px;
+  background: var(--bg-surface);
+  border-top: 1px solid var(--border-subtle);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  z-index: 20;
+}
+
+.hand-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #6b7280;
+  transition: background 0.3s;
+}
+
+.status-dot.active {
+  background: #10b981;
+  box-shadow: 0 0 8px #10b981;
+}
+
+/* ── Responsive Mobile Optimizations ─────────────────────── */
+@media (max-width: 768px) {
+  header {
+    padding: 8px 12px;
+  }
+  .brand-text span { display: none; }
+  .brand-text h1 { font-size: 1rem; }
+  .top-controls { gap: 6px; }
+  .vol-control { padding: 3px 6px; }
+  .vol-control input[type="range"] { width: 50px; }
+  .badge { display: none; }
+  .instructions-grid { grid-template-columns: 1fr; gap: 8px; }
+  .splash-card { padding: 22px 18px; }
+  #bottom-bar { font-size: 0.65rem; padding: 4px 12px; }
+}
+
+@media (max-width: 480px) {
+  .pad-key { display: none; }
+  .btn-primary span.btn-text { display: none; }
+  .kit-select { font-size: 0.7rem; padding: 4px 6px; }
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- Top Navigation -->
+  <header>
+    <div class="brand">
+      <span class="brand-icon">🥁</span>
+      <div class="brand-text">
+        <h1>Air Drums CV</h1>
+        <span>Webcam Motion Beats</span>
+      </div>
+    </div>
+
+    <div class="top-controls">
+      <select id="kitSelect" class="kit-select" title="Drum Kit Style" aria-label="Drum Sound Kit">
+        <option value="rock">Rock Kit (Acoustic)</option>
+        <option value="synth808">808 Kit (Electronic)</option>
+      </select>
+
+      <div class="vol-control">
+        <label for="volumeSlider">Vol</label>
+        <input type="range" id="volumeSlider" min="0" max="100" value="80" aria-label="Master Volume">
+      </div>
+
+      <button id="muteBtn" class="btn btn-icon" title="Mute/Unmute (M)" aria-label="Toggle Mute">🔊</button>
+
+      <button id="startBtn" class="btn btn-primary" aria-label="Start Camera">
+        <span id="startIcon">📷</span>
+        <span id="startLabel" class="btn-text">Start Camera</span>
+      </button>
+
+      <div id="fpsBadge" class="badge">-- FPS</div>
+    </div>
+  </header>
+
+  <!-- Interactive Stage -->
+  <main id="stage">
+    <!-- Camera Video Element (mirrored via CSS) -->
+    <video id="cameraVideo" autoplay playsinline muted></video>
+
+    <!-- Canvas for Realtime Hand Landmarks -->
+    <canvas id="overlay"></canvas>
+
+    <!-- Drum Pads Container -->
+    <div id="padLayer"></div>
+
+    <!-- Active Hit Toasts -->
+    <div id="hit-feed"></div>
+
+    <!-- Welcome / Instructions Splash Screen -->
+    <div id="splash">
+      <div class="splash-card">
+        <div class="splash-icon">🥁</div>
+        <h2 class="splash-title">Ready to Jam?</h2>
+        <p class="splash-desc">
+          Wave your hands in the air! Play drums using your webcam — strike downward into any drum pad to trigger high-energy drum sounds.
+        </p>
+
+        <div class="instructions-grid">
+          <div class="instruction-item">
+            <strong>🖐️ Motion Strike</strong>
+            <span>Quick downward hand movement into a pad triggers the beat.</span>
+          </div>
+          <div class="instruction-item">
+            <strong>⌨️ Keyboard & Touch</strong>
+            <span>Tap pads or press keys <code>Q, W, E, R, T, F, G, Space</code> anytime.</span>
+          </div>
+        </div>
+
+        <button id="splashStartBtn" class="btn btn-primary splash-start-btn">
+          <span>📷 Launch Camera & Play</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Loading Model Overlay -->
+    <div id="loading-overlay">
+      <div class="spinner"></div>
+      <div class="loading-text">Loading MediaPipe Hands…</div>
+      <div class="loading-sub">Initializing camera & AI vision model</div>
+    </div>
+  </main>
+
+  <!-- Bottom Status Bar -->
+  <footer id="bottom-bar">
+    <div class="hand-status">
+      <div id="statusDot" class="status-dot"></div>
+      <span id="statusText">Camera offline</span>
+    </div>
+    <div>Tip: Ensure good lighting for best hand tracking accuracy.</div>
+  </footer>
+</div>
+
+<!-- MediaPipe Hands & Camera Utils -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.min.js"></script>
+
+<script>
+(() => {
+"use strict";
+
+/* ══════════════════════════════════════════════════════════
+   1. DRUM PADS DEFINITIONS
+   Ergonomic 8-pad layout matching natural drum kit setup
+   ══════════════════════════════════════════════════════════ */
+const PAD_DEFS = [
+  // id, label, key, hue, col%, row%, sizeVMin
+  { id: "crash",  label: "Crash",   key: "Q",     hue: 45,  col: 14, row: 18, size: 13.5 },
+  { id: "hihat",  label: "Hi-Hat",  key: "W",     hue: 188, col: 30, row: 22, size: 13.0 },
+  { id: "hitom",  label: "Hi-Tom",  key: "E",     hue: 285, col: 44, row: 18, size: 13.5 },
+  { id: "midtom", label: "Mid-Tom", key: "R",     hue: 320, col: 56, row: 18, size: 13.5 },
+  { id: "ride",   label: "Ride",    key: "T",     hue: 35,  col: 70, row: 22, size: 13.0 },
+  { id: "snare",  label: "Snare",   key: "F",     hue: 0,   col: 26, row: 56, size: 15.5 },
+  { id: "ftom",   label: "Fl-Tom",  key: "G",     hue: 235, col: 74, row: 56, size: 15.0 },
+  { id: "kick",   label: "Kick",    key: "Space", hue: 145, col: 50, row: 78, size: 16.5 },
+];
+
+// Motion trigger settings
+const HIT_VELOCITY_THRESHOLD = 3.6; // minimum downward px/frame speed
+const HIT_COOLDOWN_MS = 110;        // prevents accidental double trigger per pad
+const FINGERTIP_IDS = [8, 12];      // Index (8) & Middle (12) fingertips
+
+/* ══════════════════════════════════════════════════════════
+   2. DOM REFERENCES
+   ══════════════════════════════════════════════════════════ */
+const startBtn       = document.getElementById("startBtn");
+const startLabel     = document.getElementById("startLabel");
+const startIcon      = document.getElementById("startIcon");
+const splashStartBtn = document.getElementById("splashStartBtn");
+const muteBtn        = document.getElementById("muteBtn");
+const volSlider      = document.getElementById("volumeSlider");
+const kitSelect      = document.getElementById("kitSelect");
+const fpsBadge       = document.getElementById("fpsBadge");
+const splash         = document.getElementById("splash");
+const loadingOverlay = document.getElementById("loading-overlay");
+const stage          = document.getElementById("stage");
+const video          = document.getElementById("cameraVideo");
+const canvas         = document.getElementById("overlay");
+const padLayer       = document.getElementById("padLayer");
+const hitFeed        = document.getElementById("hit-feed");
+const statusDot      = document.getElementById("statusDot");
+const statusText     = document.getElementById("statusText");
+const ctx            = canvas.getContext("2d");
+
+/* ══════════════════════════════════════════════════════════
+   3. APP STATE
+   ══════════════════════════════════════════════════════════ */
+let isRunning    = false;
+let isMuted      = false;
+let masterVolume = 0.8;
+let currentKit   = "rock"; // "rock" | "synth808"
+
+let audioCtx     = null;
+let masterGain   = null;
+
+let prevFingertipPositions = {}; // tracking velocities { `${handIdx}_${tipId}`: { x, y } }
+let padLastHitTime         = {}; // cooldown timestamps { [padId]: number }
+let padElements            = {}; // cached DOM pad elements
+
+// FPS calculation
+let frameCounter = 0;
+let lastFpsCheck = performance.now();
+
+/* ══════════════════════════════════════════════════════════
+   4. AUDIO SYNTHESIS ENGINE (Web Audio API)
+   No heavy external sample files needed; zero latency!
+   ══════════════════════════════════════════════════════════ */
+function initAudio() {
+  if (audioCtx) {
+    if (audioCtx.state === "suspended") audioCtx.resume();
+    return;
+  }
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  audioCtx = new AudioContextClass();
+  masterGain = audioCtx.createGain();
+  masterGain.gain.setValueAtTime(masterVolume, audioCtx.currentTime);
+  masterGain.connect(audioCtx.destination);
+}
+
+function updateVolume(val) {
+  masterVolume = Math.max(0, Math.min(1, val));
+  if (masterGain && audioCtx) {
+    masterGain.gain.setTargetAtTime(isMuted ? 0 : masterVolume, audioCtx.currentTime, 0.01);
+  }
+}
+
+// Cached white noise buffer
+let sharedNoiseBuffer = null;
+function getNoiseBuffer() {
+  if (sharedNoiseBuffer) return sharedNoiseBuffer;
+  if (!audioCtx) return null;
+  const bufferSize = audioCtx.sampleRate * 1.5;
+  sharedNoiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+  const data = sharedNoiseBuffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) {
+    data[i] = Math.random() * 2 - 1;
+  }
+  return sharedNoiseBuffer;
+}
+
+// ── Rock Kit Drum Voices ─────────────────────────────────
+function playRockKick(t) {
+  // Low punch oscillator
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = "sine";
+  osc.frequency.setValueAtTime(150, t);
+  osc.frequency.exponentialRampToValueAtTime(36, t + 0.12);
+
+  gain.gain.setValueAtTime(1.0, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.42);
+
+  osc.connect(gain);
+  gain.connect(masterGain);
+  osc.start(t);
+  osc.stop(t + 0.45);
+
+  // Beater attack click
+  const click = audioCtx.createOscillator();
+  const clickGain = audioCtx.createGain();
+  click.type = "triangle";
+  click.frequency.setValueAtTime(90, t);
+  click.frequency.exponentialRampToValueAtTime(25, t + 0.06);
+
+  clickGain.gain.setValueAtTime(0.8, t);
+  clickGain.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+
+  click.connect(clickGain);
+  clickGain.connect(masterGain);
+  click.start(t);
+  click.stop(t + 0.09);
+}
+
+function playRockSnare(t) {
+  // Tonal body
+  const osc = audioCtx.createOscillator();
+  const oscGain = audioCtx.createGain();
+  osc.type = "triangle";
+  osc.frequency.setValueAtTime(220, t);
+  osc.frequency.exponentialRampToValueAtTime(130, t + 0.06);
+
+  oscGain.gain.setValueAtTime(0.7, t);
+  oscGain.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+
+  osc.connect(oscGain);
+  oscGain.connect(masterGain);
+  osc.start(t);
+  osc.stop(t + 0.2);
+
+  // Snare rattle noise
+  const noise = audioCtx.createBufferSource();
+  noise.buffer = getNoiseBuffer();
+
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = "highpass";
+  filter.frequency.setValueAtTime(1600, t);
+
+  const noiseGain = audioCtx.createGain();
+  noiseGain.gain.setValueAtTime(0.8, t);
+  noiseGain.gain.exponentialRampToValueAtTime(0.001, t + 0.24);
+
+  noise.connect(filter);
+  filter.connect(noiseGain);
+  noiseGain.connect(masterGain);
+  noise.start(t);
+  noise.stop(t + 0.25);
+}
+
+function playRockHiHat(t) {
+  const noise = audioCtx.createBufferSource();
+  noise.buffer = getNoiseBuffer();
+
+  const bandpass = audioCtx.createBiquadFilter();
+  bandpass.type = "bandpass";
+  bandpass.frequency.setValueAtTime(10000, t);
+  bandpass.Q.setValueAtTime(2.5, t);
+
+  const highpass = audioCtx.createBiquadFilter();
+  highpass.type = "highpass";
+  highpass.frequency.setValueAtTime(7500, t);
+
+  const gain = audioCtx.createGain();
+  gain.gain.setValueAtTime(0.45, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+
+  noise.connect(bandpass);
+  bandpass.connect(highpass);
+  highpass.connect(gain);
+  gain.connect(masterGain);
+
+  noise.start(t);
+  noise.stop(t + 0.09);
+}
+
+function playRockCrash(t) {
+  const noise = audioCtx.createBufferSource();
+  noise.buffer = getNoiseBuffer();
+
+  const bandpass = audioCtx.createBiquadFilter();
+  bandpass.type = "bandpass";
+  bandpass.frequency.setValueAtTime(5500, t);
+  bandpass.Q.setValueAtTime(0.8, t);
+
+  const gain = audioCtx.createGain();
+  gain.gain.setValueAtTime(0.65, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + 1.4);
+
+  noise.connect(bandpass);
+  bandpass.connect(gain);
+  gain.connect(masterGain);
+
+  noise.start(t);
+  noise.stop(t + 1.45);
+}
+
+function playRockRide(t) {
+  const noise = audioCtx.createBufferSource();
+  noise.buffer = getNoiseBuffer();
+
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = "bandpass";
+  filter.frequency.setValueAtTime(8000, t);
+  filter.Q.setValueAtTime(2.0, t);
+
+  const gain = audioCtx.createGain();
+  gain.gain.setValueAtTime(0.4, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.8);
+
+  noise.connect(filter);
+  filter.connect(gain);
+  gain.connect(masterGain);
+
+  noise.start(t);
+  noise.stop(t + 0.85);
+
+  // Bell ring harmonic
+  const bell = audioCtx.createOscillator();
+  const bellGain = audioCtx.createGain();
+  bell.type = "sine";
+  bell.frequency.setValueAtTime(860, t);
+  bellGain.gain.setValueAtTime(0.18, t);
+  bellGain.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
+
+  bell.connect(bellGain);
+  bellGain.connect(masterGain);
+  bell.start(t);
+  bell.stop(t + 0.5);
+}
+
+function playRockTom(t, freq) {
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = "sine";
+  osc.frequency.setValueAtTime(freq, t);
+  osc.frequency.exponentialRampToValueAtTime(freq * 0.58, t + 0.22);
+
+  gain.gain.setValueAtTime(0.75, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.38);
+
+  osc.connect(gain);
+  gain.connect(masterGain);
+  osc.start(t);
+  osc.stop(t + 0.42);
+
+  // Stick attack tap
+  const click = audioCtx.createOscillator();
+  const clickGain = audioCtx.createGain();
+  click.type = "triangle";
+  click.frequency.setValueAtTime(freq * 1.5, t);
+  clickGain.gain.setValueAtTime(0.35, t);
+  clickGain.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
+
+  click.connect(clickGain);
+  clickGain.connect(masterGain);
+  click.start(t);
+  click.stop(t + 0.05);
+}
+
+// ── 808 Synth Kit Drum Voices ─────────────────────────────
+function playSynthKick(t) {
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = "sine";
+  osc.frequency.setValueAtTime(170, t);
+  osc.frequency.exponentialRampToValueAtTime(42, t + 0.25);
+
+  gain.gain.setValueAtTime(1.0, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.65);
+
+  osc.connect(gain);
+  gain.connect(masterGain);
+  osc.start(t);
+  osc.stop(t + 0.7);
+}
+
+function playSynthSnare(t) {
+  const osc = audioCtx.createOscillator();
+  const oscGain = audioCtx.createGain();
+  osc.type = "sine";
+  osc.frequency.setValueAtTime(320, t);
+  osc.frequency.exponentialRampToValueAtTime(160, t + 0.08);
+
+  oscGain.gain.setValueAtTime(0.8, t);
+  oscGain.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
+
+  osc.connect(oscGain);
+  oscGain.connect(masterGain);
+  osc.start(t);
+  osc.stop(t + 0.18);
+
+  const noise = audioCtx.createBufferSource();
+  noise.buffer = getNoiseBuffer();
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = "highpass";
+  filter.frequency.setValueAtTime(1200, t);
+
+  const noiseGain = audioCtx.createGain();
+  noiseGain.gain.setValueAtTime(0.9, t);
+  noiseGain.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+
+  noise.connect(filter);
+  filter.connect(noiseGain);
+  noiseGain.connect(masterGain);
+  noise.start(t);
+  noise.stop(t + 0.3);
+}
+
+function playSynthHiHat(t) {
+  const noise = audioCtx.createBufferSource();
+  noise.buffer = getNoiseBuffer();
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = "highpass";
+  filter.frequency.setValueAtTime(9500, t);
+
+  const gain = audioCtx.createGain();
+  gain.gain.setValueAtTime(0.5, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+
+  noise.connect(filter);
+  filter.connect(gain);
+  gain.connect(masterGain);
+  noise.start(t);
+  noise.stop(t + 0.06);
+}
+
+// Master sound map
+function playDrumSound(id) {
+  if (isMuted || !audioCtx) return;
+  const t = audioCtx.currentTime;
+
+  if (currentKit === "synth808") {
+    switch (id) {
+      case "kick":   playSynthKick(t); break;
+      case "snare":  playSynthSnare(t); break;
+      case "hihat":  playSynthHiHat(t); break;
+      case "hitom":  playRockTom(t, 310); break;
+      case "midtom": playRockTom(t, 220); break;
+      case "ftom":   playRockTom(t, 140); break;
+      case "crash":  playRockCrash(t); break;
+      case "ride":   playRockRide(t); break;
+    }
+  } else {
+    // Acoustic Rock kit
+    switch (id) {
+      case "kick":   playRockKick(t); break;
+      case "snare":  playRockSnare(t); break;
+      case "hihat":  playRockHiHat(t); break;
+      case "hitom":  playRockTom(t, 260); break;
+      case "midtom": playRockTom(t, 190); break;
+      case "ftom":   playRockTom(t, 125); break;
+      case "crash":  playRockCrash(t); break;
+      case "ride":   playRockRide(t); break;
+    }
+  }
+}
+
+/* ══════════════════════════════════════════════════════════
+   5. DRUM PADS RENDERING & UI
+   ══════════════════════════════════════════════════════════ */
+function renderPads() {
+  padLayer.innerHTML = "";
+  PAD_DEFS.forEach(p => {
+    const el = document.createElement("div");
+    el.className = "drum-pad";
+    el.id = "pad-" + p.id;
+    el.dataset.padId = p.id;
+
+    const bg     = `hsla(${p.hue}, 80%, 45%, 0.45)`;
+    const border = `hsla(${p.hue}, 95%, 65%, 0.6)`;
+    const glow   = `hsla(${p.hue}, 95%, 55%, 0.4)`;
+
+    el.style.left = `${p.col}%`;
+    el.style.top  = `${p.row}%`;
+    el.style.width  = `${p.size}vmin`;
+    el.style.height = `${p.size}vmin`;
+    el.style.backgroundColor = bg;
+    el.style.borderColor = border;
+    el.style.boxShadow = `0 4px 25px rgba(0,0,0,0.6), 0 0 20px ${glow}`;
+
+    el.innerHTML = `
+      <span class="pad-title">${p.label}</span>
+      <span class="pad-key">${p.key}</span>
+    `;
+
+    // Click/touch fallback
+    el.addEventListener("pointerdown", e => {
+      e.preventDefault();
+      triggerDrumPad(p.id);
+    });
+
+    padLayer.appendChild(el);
+    padElements[p.id] = el;
+  });
+}
+renderPads();
+
+/* ── Trigger Drum Pad (Animation + Sound + Ripple) ───────── */
+function triggerDrumPad(id) {
+  const now = performance.now();
+  if (padLastHitTime[id] && now - padLastHitTime[id] < HIT_COOLDOWN_MS) {
+    return; // cooldown active
+  }
+  padLastHitTime[id] = now;
+
+  initAudio();
+  playDrumSound(id);
+
+  const el = padElements[id];
+  if (!el) return;
+
+  // Re-trigger CSS bounce animation
+  el.classList.remove("hit");
+  void el.offsetWidth; // force DOM reflow
+  el.classList.add("hit");
+  setTimeout(() => el.classList.remove("hit"), 220);
+
+  // Spawn visual shockwave
+  createRipple(el);
+
+  // Spawn brief hit tag
+  showHitTag(id);
+}
+
+function createRipple(el) {
+  const padRect   = el.getBoundingClientRect();
+  const stageRect = stage.getBoundingClientRect();
+
+  const ripple = document.createElement("div");
+  ripple.className = "ripple";
+  const size = Math.max(padRect.width, padRect.height);
+
+  ripple.style.left = `${padRect.left - stageRect.left + padRect.width / 2}px`;
+  ripple.style.top  = `${padRect.top  - stageRect.top  + padRect.height / 2}px`;
+  ripple.style.width  = `${size}px`;
+  ripple.style.height = `${size}px`;
+  ripple.style.borderColor = el.style.borderColor;
+  ripple.style.boxShadow = `0 0 25px ${el.style.borderColor}`;
+
+  stage.appendChild(ripple);
+  setTimeout(() => ripple.remove(), 480);
+}
+
+function showHitTag(id) {
+  const padDef = PAD_DEFS.find(p => p.id === id);
+  if (!padDef) return;
+
+  const tag = document.createElement("div");
+  tag.className = "hit-tag";
+  tag.textContent = padDef.label;
+  tag.style.color = `hsl(${padDef.hue}, 95%, 65%)`;
+
+  hitFeed.appendChild(tag);
+  setTimeout(() => tag.remove(), 400);
+}
+
+/* ══════════════════════════════════════════════════════════
+   6. COORDINATE MAPPING (Object-Fit: Cover aware)
+   Guarantees 100% pixel-perfect alignment between
+   mirrored camera video, canvas drawing, and pad collisions!
+   ══════════════════════════════════════════════════════════ */
+function mapVideoToStage(normX, normY) {
+  const stageW = stage.clientWidth;
+  const stageH = stage.clientHeight;
+  const videoW = video.videoWidth || 640;
+  const videoH = video.videoHeight || 480;
+
+  const rVideo = videoW / videoH;
+  const rStage = stageW / stageH;
+  let renderW, renderH, offsetX, offsetY;
+
+  if (rStage > rVideo) {
+    renderW = stageW;
+    renderH = stageW / rVideo;
+    offsetX = 0;
+    offsetY = (stageH - renderH) / 2;
+  } else {
+    renderH = stageH;
+    renderW = stageH * rVideo;
+    offsetX = (stageW - renderW) / 2;
+    offsetY = 0;
+  }
+
+  // Horizontal mirror flip for natural selfie interaction
+  return {
+    x: (1 - normX) * renderW + offsetX,
+    y: normY * renderH + offsetY
+  };
+}
+
+/* ══════════════════════════════════════════════════════════
+   7. MEDIAPIPE HANDS VISION TRACKING
+   ══════════════════════════════════════════════════════════ */
+let handsInstance = null;
+let cameraInstance = null;
+
+async function startCameraAndTracking() {
+  loadingOverlay.classList.add("show");
+
+  try {
+    initAudio();
+
+    handsInstance = new Hands({
+      locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/${file}`
+    });
+
+    handsInstance.setOptions({
+      maxNumHands: 2,
+      modelComplexity: 1,
+      minDetectionConfidence: 0.6,
+      minTrackingConfidence: 0.5,
+    });
+
+    handsInstance.onResults(handleHandResults);
+
+    cameraInstance = new Camera(video, {
+      onFrame: async () => {
+        if (isRunning && handsInstance) {
+          await handsInstance.send({ image: video });
+        }
+      },
+      width: 640,
+      height: 480,
+      facingMode: "user"
+    });
+
+    await cameraInstance.start();
+
+    isRunning = true;
+    startBtn.classList.add("active");
+    startLabel.textContent = "Stop Camera";
+    startIcon.textContent = "⏹️";
+    splash.classList.add("hidden");
+    loadingOverlay.classList.remove("show");
+
+    statusDot.classList.add("active");
+    statusText.textContent = "Camera active — Wave hands to play";
+
+    resizeCanvas();
+  } catch (err) {
+    console.error("Camera startup error:", err);
+    loadingOverlay.classList.remove("show");
+    statusText.textContent = "Camera error: " + err.message;
+    alert("Could not access webcam. Please ensure camera permissions are granted in your browser.\n\nYou can still play using keyboard or touch!");
+  }
+}
+
+function stopCamera() {
+  if (cameraInstance) {
+    cameraInstance.stop();
+  }
+  isRunning = false;
+  startBtn.classList.remove("active");
+  startLabel.textContent = "Start Camera";
+  startIcon.textContent = "📷";
+  splash.classList.remove("hidden");
+  statusDot.classList.remove("active");
+  statusText.textContent = "Camera offline";
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+}
+
+/* ── Handle Hand Tracking Frame Results ──────────────────── */
+function handleHandResults(results) {
+  // Sync canvas size to stage client size with high-DPI support
+  const dpr = window.devicePixelRatio || 1;
+  const displayW = stage.clientWidth;
+  const displayH = stage.clientHeight;
+
+  if (canvas.width !== displayW * dpr || canvas.height !== displayH * dpr) {
+    canvas.width  = displayW * dpr;
+    canvas.height = displayH * dpr;
+  }
+
+  ctx.save();
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, displayW, displayH);
+
+  // Update FPS counter
+  frameCounter++;
+  const now = performance.now();
+  if (now - lastFpsCheck >= 1000) {
+    fpsBadge.textContent = `${frameCounter} FPS`;
+    frameCounter = 0;
+    lastFpsCheck = now;
+  }
+
+  if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
+    prevFingertipPositions = {};
+    ctx.restore();
+    return;
+  }
+
+  const currentFingertips = {};
+
+  results.multiHandLandmarks.forEach((landmarks, handIdx) => {
+    // 1. Draw glowing hand skeleton
+    drawHandSkeleton(landmarks);
+
+    // 2. Track fingertips for downward velocity & pad hits
+    FINGERTIP_IDS.forEach(tipId => {
+      const lm = landmarks[tipId];
+      const stagePos = mapVideoToStage(lm.x, lm.y);
+      const key = `${handIdx}_${tipId}`;
+
+      currentFingertips[key] = stagePos;
+
+      // Draw glowing mallet orb on fingertip
+      drawMalletTip(stagePos.x, stagePos.y, tipId === 8);
+
+      // Check downward strike velocity
+      if (prevFingertipPositions[key]) {
+        const dy = stagePos.y - prevFingertipPositions[key].y;
+
+        // Downward velocity detected!
+        if (dy > HIT_VELOCITY_THRESHOLD) {
+          checkPadCollision(stagePos.x, stagePos.y);
+        }
+      }
+    });
+  });
+
+  prevFingertipPositions = currentFingertips;
+  ctx.restore();
+}
+
+/* ── Pad Collision Detection ─────────────────────────────── */
+function checkPadCollision(x, y) {
+  const stageRect = stage.getBoundingClientRect();
+
+  PAD_DEFS.forEach(p => {
+    const el = padElements[p.id];
+    if (!el) return;
+
+    const padRect = el.getBoundingClientRect();
+    const centerX = (padRect.left - stageRect.left) + padRect.width / 2;
+    const centerY = (padRect.top  - stageRect.top)  + padRect.height / 2;
+    const radius  = padRect.width / 2;
+
+    const dx = x - centerX;
+    const dy = y - centerY;
+    const distSq = dx * dx + dy * dy;
+
+    // Generous collision circle (radius * 1.25)
+    if (distSq <= radius * radius * 1.55) {
+      triggerDrumPad(p.id);
+    }
+  });
+}
+
+/* ── Visual Drawing: Hand Bones & Mallets ────────────────── */
+const HAND_BONES = [
+  [0,1],[1,2],[2,3],[3,4],        // Thumb
+  [0,5],[5,6],[6,7],[7,8],        // Index
+  [5,9],[9,10],[10,11],[11,12],   // Middle
+  [9,13],[13,14],[14,15],[15,16], // Ring
+  [13,17],[17,18],[18,19],[19,20],// Pinky
+  [0,17]                          // Palm base
+];
+
+function drawHandSkeleton(landmarks) {
+  // Bones
+  ctx.strokeStyle = "rgba(6, 182, 212, 0.65)";
+  ctx.lineWidth = 2.5;
+  ctx.lineCap = "round";
+  ctx.shadowColor = "rgba(6, 182, 212, 0.8)";
+  ctx.shadowBlur = 8;
+
+  HAND_BONES.forEach(([a, b]) => {
+    const p1 = mapVideoToStage(landmarks[a].x, landmarks[a].y);
+    const p2 = mapVideoToStage(landmarks[b].x, landmarks[b].y);
+    ctx.beginPath();
+    ctx.moveTo(p1.x, p1.y);
+    ctx.lineTo(p2.x, p2.y);
+    ctx.stroke();
+  });
+
+  // Small joint nodes
+  ctx.fillStyle = "rgba(255, 255, 255, 0.75)";
+  ctx.shadowBlur = 4;
+  landmarks.forEach((lm, idx) => {
+    if (FINGERTIP_IDS.includes(idx)) return; // fingertips drawn as mallets
+    const pos = mapVideoToStage(lm.x, lm.y);
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, 3, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  ctx.shadowBlur = 0;
+}
+
+function drawMalletTip(x, y, isIndex) {
+  ctx.save();
+  const radius = isIndex ? 11 : 9;
+
+  // Radial glowing aura
+  const grad = ctx.createRadialGradient(x, y, 2, x, y, radius + 8);
+  grad.addColorStop(0, "rgba(255, 255, 255, 1)");
+  grad.addColorStop(0.3, "rgba(168, 85, 247, 0.9)");
+  grad.addColorStop(1, "rgba(168, 85, 247, 0)");
+
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(x, y, radius + 8, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Core orb
+  ctx.fillStyle = "#ffffff";
+  ctx.beginPath();
+  ctx.arc(x, y, radius * 0.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+/* ══════════════════════════════════════════════════════════
+   8. KEYBOARD SHORTCUTS
+   ══════════════════════════════════════════════════════════ */
+const KEY_TO_PAD = {
+  "q": "crash",
+  "w": "hihat",
+  "e": "hitom",
+  "r": "midtom",
+  "t": "ride",
+  "f": "snare",
+  "g": "ftom",
+  " ": "kick",
+};
+
+window.addEventListener("keydown", e => {
+  if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "SELECT")) return;
+
+  if (e.key.toLowerCase() === "m") {
+    muteBtn.click();
+    return;
+  }
+
+  const padId = KEY_TO_PAD[e.key.toLowerCase()];
+  if (padId) {
+    e.preventDefault();
+    triggerDrumPad(padId);
+  }
+});
+
+/* ══════════════════════════════════════════════════════════
+   9. UI EVENT LISTENERS
+   ══════════════════════════════════════════════════════════ */
+startBtn.addEventListener("click", () => {
+  if (isRunning) {
+    stopCamera();
+  } else {
+    startCameraAndTracking();
+  }
+});
+
+splashStartBtn.addEventListener("click", () => {
+  startCameraAndTracking();
+});
+
+muteBtn.addEventListener("click", () => {
+  initAudio();
+  isMuted = !isMuted;
+  muteBtn.textContent = isMuted ? "🔇" : "🔊";
+  muteBtn.classList.toggle("muted", isMuted);
+  updateVolume(masterVolume);
+});
+
+volSlider.addEventListener("input", e => {
+  initAudio();
+  updateVolume(parseFloat(e.target.value) / 100);
+});
+
+kitSelect.addEventListener("change", e => {
+  currentKit = e.target.value;
+});
+
+function resizeCanvas() {
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width  = stage.clientWidth * dpr;
+  canvas.height = stage.clientHeight * dpr;
+}
+
+window.addEventListener("resize", () => {
+  resizeCanvas();
+});
+
+// Unlock audio on any initial click / tap
+window.addEventListener("pointerdown", () => {
+  initAudio();
+}, { once: true });
+
+})();
+</script>
+</body>
+</html>

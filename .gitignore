@@ -1,0 +1,4 @@
+# Ignore unrelated projects and packages
+Stocks/
+node_modules/
+.DS_Store
