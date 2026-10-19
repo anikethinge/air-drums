@@ -332,6 +332,13 @@ header {
 }
 
 /* Pad hit state */
+
+.drum-pad.hover {
+  transform: translate(-50%, -50%) scale(1.08);
+  box-shadow: 0 0 35px var(--accent-cyan), inset 0 0 20px rgba(255, 255, 255, 0.4);
+  border-color: #ffffff;
+}
+
 .drum-pad.hit {
   transform: translate(-50%, -50%) scale(1.18) !important;
   filter: brightness(2) saturate(1.4);
@@ -614,6 +621,7 @@ header {
         <input type="range" id="volumeSlider" min="0" max="100" value="80" aria-label="Master Volume">
       </div>
 
+      <button id="testSoundBtn" class="btn btn-secondary" title="Test Drum Audio" aria-label="Test Sound" style="padding: 6px 12px; font-size: 0.82rem; font-weight: 600; background: rgba(255,255,255,0.08); border: 1px solid var(--border-bright); color: var(--text-main); border-radius: var(--radius-md); cursor: pointer;">🎵 Test Sound</button>
       <button id="muteBtn" class="btn btn-icon" title="Mute/Unmute (M)" aria-label="Toggle Mute">🔊</button>
 
       <button id="startBtn" class="btn btn-primary" aria-label="Start Camera">
@@ -708,9 +716,8 @@ const PAD_DEFS = [
 ];
 
 // Motion trigger settings
-const HIT_VELOCITY_THRESHOLD = 3.6; // minimum downward px/frame speed
-const HIT_COOLDOWN_MS = 110;        // prevents accidental double trigger per pad
-const FINGERTIP_IDS = [8, 12];      // Index (8) & Middle (12) fingertips
+const HIT_COOLDOWN_MS = 95;   // 95ms cooldown allows rapid rolls without stutter
+const FINGERTIP_IDS = [8, 12]; // Index (8) & Middle (12) fingertips
 
 /* ══════════════════════════════════════════════════════════
    2. DOM REFERENCES
@@ -719,6 +726,7 @@ const startBtn       = document.getElementById("startBtn");
 const startLabel     = document.getElementById("startLabel");
 const startIcon      = document.getElementById("startIcon");
 const splashStartBtn = document.getElementById("splashStartBtn");
+const testSoundBtn   = document.getElementById("testSoundBtn");
 const muteBtn        = document.getElementById("muteBtn");
 const volSlider      = document.getElementById("volumeSlider");
 const kitSelect      = document.getElementById("kitSelect");
@@ -739,14 +747,16 @@ const ctx            = canvas.getContext("2d");
    ══════════════════════════════════════════════════════════ */
 let isRunning    = false;
 let isMuted      = false;
-let masterVolume = 0.8;
+let masterVolume = 1.0;
 let currentKit   = "rock"; // "rock" | "synth808"
 
 let audioCtx     = null;
 let masterGain   = null;
 
-let prevFingertipPositions = {}; // tracking velocities { `${handIdx}_${tipId}`: { x, y } }
-let padLastHitTime         = {}; // cooldown timestamps { [padId]: number }
+// Finger & Collision Tracking
+let prevFingertipPositions = {}; 
+let fingerInsideState      = {}; // { [fingerKey]: { [padId]: boolean } }
+let padLastHitTime         = {}; // { [padId]: number }
 let padElements            = {}; // cached DOM pad elements
 
 // FPS calculation
@@ -755,11 +765,12 @@ let lastFpsCheck = performance.now();
 
 /* ══════════════════════════════════════════════════════════
    4. AUDIO SYNTHESIS ENGINE (Web Audio API)
-   No heavy external sample files needed; zero latency!
    ══════════════════════════════════════════════════════════ */
 function initAudio() {
   if (audioCtx) {
-    if (audioCtx.state === "suspended") audioCtx.resume();
+    if (audioCtx.state === "suspended") {
+      audioCtx.resume();
+    }
     return;
   }
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
@@ -767,6 +778,15 @@ function initAudio() {
   masterGain = audioCtx.createGain();
   masterGain.gain.setValueAtTime(masterVolume, audioCtx.currentTime);
   masterGain.connect(audioCtx.destination);
+}
+
+function ensureAudioRunning() {
+  if (!audioCtx) {
+    initAudio();
+  }
+  if (audioCtx && audioCtx.state === "suspended") {
+    audioCtx.resume();
+  }
 }
 
 function updateVolume(val) {
@@ -792,29 +812,27 @@ function getNoiseBuffer() {
 
 // ── Rock Kit Drum Voices ─────────────────────────────────
 function playRockKick(t) {
-  // Low punch oscillator
   const osc = audioCtx.createOscillator();
   const gain = audioCtx.createGain();
   osc.type = "sine";
-  osc.frequency.setValueAtTime(150, t);
+  osc.frequency.setValueAtTime(160, t);
   osc.frequency.exponentialRampToValueAtTime(36, t + 0.12);
 
   gain.gain.setValueAtTime(1.0, t);
-  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.42);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
 
   osc.connect(gain);
   gain.connect(masterGain);
   osc.start(t);
-  osc.stop(t + 0.45);
+  osc.stop(t + 0.48);
 
-  // Beater attack click
   const click = audioCtx.createOscillator();
   const clickGain = audioCtx.createGain();
   click.type = "triangle";
-  click.frequency.setValueAtTime(90, t);
+  click.frequency.setValueAtTime(95, t);
   click.frequency.exponentialRampToValueAtTime(25, t + 0.06);
 
-  clickGain.gain.setValueAtTime(0.8, t);
+  clickGain.gain.setValueAtTime(0.85, t);
   clickGain.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
 
   click.connect(clickGain);
@@ -824,14 +842,13 @@ function playRockKick(t) {
 }
 
 function playRockSnare(t) {
-  // Tonal body
   const osc = audioCtx.createOscillator();
   const oscGain = audioCtx.createGain();
   osc.type = "triangle";
-  osc.frequency.setValueAtTime(220, t);
+  osc.frequency.setValueAtTime(240, t);
   osc.frequency.exponentialRampToValueAtTime(130, t + 0.06);
 
-  oscGain.gain.setValueAtTime(0.7, t);
+  oscGain.gain.setValueAtTime(0.85, t);
   oscGain.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
 
   osc.connect(oscGain);
@@ -839,23 +856,22 @@ function playRockSnare(t) {
   osc.start(t);
   osc.stop(t + 0.2);
 
-  // Snare rattle noise
   const noise = audioCtx.createBufferSource();
   noise.buffer = getNoiseBuffer();
 
   const filter = audioCtx.createBiquadFilter();
   filter.type = "highpass";
-  filter.frequency.setValueAtTime(1600, t);
+  filter.frequency.setValueAtTime(1000, t);
 
   const noiseGain = audioCtx.createGain();
-  noiseGain.gain.setValueAtTime(0.8, t);
-  noiseGain.gain.exponentialRampToValueAtTime(0.001, t + 0.24);
+  noiseGain.gain.setValueAtTime(0.95, t);
+  noiseGain.gain.exponentialRampToValueAtTime(0.001, t + 0.26);
 
   noise.connect(filter);
   filter.connect(noiseGain);
   noiseGain.connect(masterGain);
   noise.start(t);
-  noise.stop(t + 0.25);
+  noise.stop(t + 0.28);
 }
 
 function playRockHiHat(t) {
@@ -872,7 +888,7 @@ function playRockHiHat(t) {
   highpass.frequency.setValueAtTime(7500, t);
 
   const gain = audioCtx.createGain();
-  gain.gain.setValueAtTime(0.45, t);
+  gain.gain.setValueAtTime(0.6, t);
   gain.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
 
   noise.connect(bandpass);
@@ -894,7 +910,7 @@ function playRockCrash(t) {
   bandpass.Q.setValueAtTime(0.8, t);
 
   const gain = audioCtx.createGain();
-  gain.gain.setValueAtTime(0.65, t);
+  gain.gain.setValueAtTime(0.8, t);
   gain.gain.exponentialRampToValueAtTime(0.001, t + 1.4);
 
   noise.connect(bandpass);
@@ -915,7 +931,7 @@ function playRockRide(t) {
   filter.Q.setValueAtTime(2.0, t);
 
   const gain = audioCtx.createGain();
-  gain.gain.setValueAtTime(0.4, t);
+  gain.gain.setValueAtTime(0.55, t);
   gain.gain.exponentialRampToValueAtTime(0.001, t + 0.8);
 
   noise.connect(filter);
@@ -925,12 +941,11 @@ function playRockRide(t) {
   noise.start(t);
   noise.stop(t + 0.85);
 
-  // Bell ring harmonic
   const bell = audioCtx.createOscillator();
   const bellGain = audioCtx.createGain();
   bell.type = "sine";
-  bell.frequency.setValueAtTime(860, t);
-  bellGain.gain.setValueAtTime(0.18, t);
+  bell.frequency.setValueAtTime(880, t);
+  bellGain.gain.setValueAtTime(0.25, t);
   bellGain.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
 
   bell.connect(bellGain);
@@ -946,20 +961,19 @@ function playRockTom(t, freq) {
   osc.frequency.setValueAtTime(freq, t);
   osc.frequency.exponentialRampToValueAtTime(freq * 0.58, t + 0.22);
 
-  gain.gain.setValueAtTime(0.75, t);
-  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.38);
+  gain.gain.setValueAtTime(0.9, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
 
   osc.connect(gain);
   gain.connect(masterGain);
   osc.start(t);
   osc.stop(t + 0.42);
 
-  // Stick attack tap
   const click = audioCtx.createOscillator();
   const clickGain = audioCtx.createGain();
   click.type = "triangle";
   click.frequency.setValueAtTime(freq * 1.5, t);
-  clickGain.gain.setValueAtTime(0.35, t);
+  clickGain.gain.setValueAtTime(0.4, t);
   clickGain.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
 
   click.connect(clickGain);
@@ -973,26 +987,26 @@ function playSynthKick(t) {
   const osc = audioCtx.createOscillator();
   const gain = audioCtx.createGain();
   osc.type = "sine";
-  osc.frequency.setValueAtTime(170, t);
+  osc.frequency.setValueAtTime(180, t);
   osc.frequency.exponentialRampToValueAtTime(42, t + 0.25);
 
   gain.gain.setValueAtTime(1.0, t);
-  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.65);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.7);
 
   osc.connect(gain);
   gain.connect(masterGain);
   osc.start(t);
-  osc.stop(t + 0.7);
+  osc.stop(t + 0.75);
 }
 
 function playSynthSnare(t) {
   const osc = audioCtx.createOscillator();
   const oscGain = audioCtx.createGain();
   osc.type = "sine";
-  osc.frequency.setValueAtTime(320, t);
+  osc.frequency.setValueAtTime(340, t);
   osc.frequency.exponentialRampToValueAtTime(160, t + 0.08);
 
-  oscGain.gain.setValueAtTime(0.8, t);
+  oscGain.gain.setValueAtTime(0.9, t);
   oscGain.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
 
   osc.connect(oscGain);
@@ -1007,7 +1021,7 @@ function playSynthSnare(t) {
   filter.frequency.setValueAtTime(1200, t);
 
   const noiseGain = audioCtx.createGain();
-  noiseGain.gain.setValueAtTime(0.9, t);
+  noiseGain.gain.setValueAtTime(1.0, t);
   noiseGain.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
 
   noise.connect(filter);
@@ -1025,7 +1039,7 @@ function playSynthHiHat(t) {
   filter.frequency.setValueAtTime(9500, t);
 
   const gain = audioCtx.createGain();
-  gain.gain.setValueAtTime(0.5, t);
+  gain.gain.setValueAtTime(0.6, t);
   gain.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
 
   noise.connect(filter);
@@ -1037,6 +1051,7 @@ function playSynthHiHat(t) {
 
 // Master sound map
 function playDrumSound(id) {
+  ensureAudioRunning();
   if (isMuted || !audioCtx) return;
   const t = audioCtx.currentTime;
 
@@ -1052,7 +1067,6 @@ function playDrumSound(id) {
       case "ride":   playRockRide(t); break;
     }
   } else {
-    // Acoustic Rock kit
     switch (id) {
       case "kick":   playRockKick(t); break;
       case "snare":  playRockSnare(t); break;
@@ -1108,21 +1122,15 @@ renderPads();
 
 /* ── Trigger Drum Pad (Animation + Sound + Ripple) ───────── */
 function triggerDrumPad(id) {
-  const now = performance.now();
-  if (padLastHitTime[id] && now - padLastHitTime[id] < HIT_COOLDOWN_MS) {
-    return; // cooldown active
-  }
-  padLastHitTime[id] = now;
-
-  initAudio();
+  ensureAudioRunning();
   playDrumSound(id);
 
   const el = padElements[id];
   if (!el) return;
 
-  // Re-trigger CSS bounce animation
+  // Re-trigger bounce animation
   el.classList.remove("hit");
-  void el.offsetWidth; // force DOM reflow
+  void el.offsetWidth;
   el.classList.add("hit");
   setTimeout(() => el.classList.remove("hit"), 220);
 
@@ -1131,6 +1139,12 @@ function triggerDrumPad(id) {
 
   // Spawn brief hit tag
   showHitTag(id);
+
+  // Bottom status notification
+  const padDef = PAD_DEFS.find(p => p.id === id);
+  if (padDef) {
+    statusText.textContent = `💥 HIT: ${padDef.label}!`;
+  }
 }
 
 function createRipple(el) {
@@ -1167,8 +1181,6 @@ function showHitTag(id) {
 
 /* ══════════════════════════════════════════════════════════
    6. COORDINATE MAPPING (Object-Fit: Cover aware)
-   Guarantees 100% pixel-perfect alignment between
-   mirrored camera video, canvas drawing, and pad collisions!
    ══════════════════════════════════════════════════════════ */
 function mapVideoToStage(normX, normY) {
   const stageW = stage.clientWidth;
@@ -1209,7 +1221,7 @@ async function startCameraAndTracking() {
   loadingOverlay.classList.add("show");
 
   try {
-    initAudio();
+    ensureAudioRunning();
 
     handsInstance = new Hands({
       locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/${file}`
@@ -1217,9 +1229,9 @@ async function startCameraAndTracking() {
 
     handsInstance.setOptions({
       maxNumHands: 2,
-      modelComplexity: 1,
-      minDetectionConfidence: 0.6,
-      minTrackingConfidence: 0.5,
+      modelComplexity: 0, // 0 = Fast, low-latency 60 FPS tracking
+      minDetectionConfidence: 0.45,
+      minTrackingConfidence: 0.45,
     });
 
     handsInstance.onResults(handleHandResults);
@@ -1245,7 +1257,7 @@ async function startCameraAndTracking() {
     loadingOverlay.classList.remove("show");
 
     statusDot.classList.add("active");
-    statusText.textContent = "Camera active — Wave hands to play";
+    statusText.textContent = "🟢 Camera active — Hold up 2 fingers (Index & Middle) to play!";
 
     resizeCanvas();
   } catch (err) {
@@ -1272,7 +1284,6 @@ function stopCamera() {
 
 /* ── Handle Hand Tracking Frame Results ──────────────────── */
 function handleHandResults(results) {
-  // Sync canvas size to stage client size with high-DPI support
   const dpr = window.devicePixelRatio || 1;
   const displayW = stage.clientWidth;
   const displayH = stage.clientHeight;
@@ -1297,36 +1308,43 @@ function handleHandResults(results) {
 
   if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
     prevFingertipPositions = {};
+    // Clear hover states on all pads
+    PAD_DEFS.forEach(p => {
+      const el = padElements[p.id];
+      if (el) el.classList.remove("hover");
+    });
+    statusText.textContent = "👀 Waiting for hands... Hold hands up to camera";
     ctx.restore();
     return;
   }
 
+  const handsCount = results.multiHandLandmarks.length;
   const currentFingertips = {};
 
   results.multiHandLandmarks.forEach((landmarks, handIdx) => {
     // 1. Draw glowing hand skeleton
     drawHandSkeleton(landmarks);
 
-    // 2. Track fingertips for downward velocity & pad hits
+    // Identify Hand Label
+    const handedness = (results.multiHandedness && results.multiHandedness[handIdx])
+      ? results.multiHandedness[handIdx].label
+      : `Hand_${handIdx}`;
+
+    // 2. Track 2 Fingertips: Index (8) & Middle (12)
     FINGERTIP_IDS.forEach(tipId => {
+      const isIndex = (tipId === 8);
       const lm = landmarks[tipId];
       const stagePos = mapVideoToStage(lm.x, lm.y);
-      const key = `${handIdx}_${tipId}`;
+      const fingerKey = `${handedness}_${tipId}`;
 
-      currentFingertips[key] = stagePos;
+      const prevPos = prevFingertipPositions[fingerKey];
+      currentFingertips[fingerKey] = stagePos;
 
-      // Draw glowing mallet orb on fingertip
-      drawMalletTip(stagePos.x, stagePos.y, tipId === 8);
+      // Draw high-visibility glowing mallet orb
+      drawMalletTip(stagePos.x, stagePos.y, isIndex, handedness);
 
-      // Check downward strike velocity
-      if (prevFingertipPositions[key]) {
-        const dy = stagePos.y - prevFingertipPositions[key].y;
-
-        // Downward velocity detected!
-        if (dy > HIT_VELOCITY_THRESHOLD) {
-          checkPadCollision(stagePos.x, stagePos.y);
-        }
-      }
+      // Process Drum Collision & Trigger Hits
+      processFingertipHits(fingerKey, stagePos, prevPos, isIndex);
     });
   });
 
@@ -1334,9 +1352,15 @@ function handleHandResults(results) {
   ctx.restore();
 }
 
-/* ── Pad Collision Detection ─────────────────────────────── */
-function checkPadCollision(x, y) {
+/* ── 2-Finger Drum Pad Collision & Strike Detection ─────── */
+function processFingertipHits(fingerKey, stagePos, prevPos, isIndex) {
   const stageRect = stage.getBoundingClientRect();
+  if (!fingerInsideState[fingerKey]) {
+    fingerInsideState[fingerKey] = {};
+  }
+
+  // Calculate downward velocity
+  const dy = prevPos ? (stagePos.y - prevPos.y) : 0;
 
   PAD_DEFS.forEach(p => {
     const el = padElements[p.id];
@@ -1347,14 +1371,34 @@ function checkPadCollision(x, y) {
     const centerY = (padRect.top  - stageRect.top)  + padRect.height / 2;
     const radius  = padRect.width / 2;
 
-    const dx = x - centerX;
-    const dy = y - centerY;
-    const distSq = dx * dx + dy * dy;
+    const dx = stagePos.x - centerX;
+    const dCenterY = stagePos.y - centerY;
+    const dist = Math.sqrt(dx * dx + dCenterY * dCenterY);
 
-    // Generous collision circle (radius * 1.25)
-    if (distSq <= radius * radius * 1.55) {
-      triggerDrumPad(p.id);
+    // Hit zone: 1.20x pad radius for responsive detection
+    const isInside = dist <= radius * 1.20;
+    const wasInside = fingerInsideState[fingerKey][p.id] || false;
+
+    if (isInside) {
+      el.classList.add("hover");
+      const now = performance.now();
+      const lastHit = padLastHitTime[p.id] || 0;
+
+      // Hit Trigger conditions:
+      // A) ENTRY: Finger just moved from outside to inside pad boundary (instant hit!)
+      // B) DOWNWARD STRIKE: Finger is inside pad and strikes downwards (dy > 1.8)
+      const isEntry = !wasInside;
+      const isStrike = wasInside && (dy > 1.8);
+
+      if ((isEntry || isStrike) && (now - lastHit >= HIT_COOLDOWN_MS)) {
+        triggerDrumPad(p.id);
+        padLastHitTime[p.id] = now;
+      }
+    } else if (wasInside) {
+      el.classList.remove("hover");
     }
+
+    fingerInsideState[fingerKey][p.id] = isInside;
   });
 }
 
@@ -1369,8 +1413,7 @@ const HAND_BONES = [
 ];
 
 function drawHandSkeleton(landmarks) {
-  // Bones
-  ctx.strokeStyle = "rgba(6, 182, 212, 0.65)";
+  ctx.strokeStyle = "rgba(6, 182, 212, 0.7)";
   ctx.lineWidth = 2.5;
   ctx.lineCap = "round";
   ctx.shadowColor = "rgba(6, 182, 212, 0.8)";
@@ -1385,11 +1428,10 @@ function drawHandSkeleton(landmarks) {
     ctx.stroke();
   });
 
-  // Small joint nodes
-  ctx.fillStyle = "rgba(255, 255, 255, 0.75)";
+  ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
   ctx.shadowBlur = 4;
   landmarks.forEach((lm, idx) => {
-    if (FINGERTIP_IDS.includes(idx)) return; // fingertips drawn as mallets
+    if (FINGERTIP_IDS.includes(idx)) return;
     const pos = mapVideoToStage(lm.x, lm.y);
     ctx.beginPath();
     ctx.arc(pos.x, pos.y, 3, 0, Math.PI * 2);
@@ -1399,26 +1441,47 @@ function drawHandSkeleton(landmarks) {
   ctx.shadowBlur = 0;
 }
 
-function drawMalletTip(x, y, isIndex) {
+function drawMalletTip(x, y, isIndex, handLabel) {
   ctx.save();
-  const radius = isIndex ? 11 : 9;
+  const radius = isIndex ? 14 : 12;
 
-  // Radial glowing aura
-  const grad = ctx.createRadialGradient(x, y, 2, x, y, radius + 8);
-  grad.addColorStop(0, "rgba(255, 255, 255, 1)");
-  grad.addColorStop(0.3, "rgba(168, 85, 247, 0.9)");
-  grad.addColorStop(1, "rgba(168, 85, 247, 0)");
+  // Cyan for Index, Electric Magenta for Middle
+  const color = isIndex ? "rgba(6, 182, 212, 1)" : "rgba(236, 72, 153, 1)";
+  const auraColor = isIndex ? "rgba(6, 182, 212, 0.35)" : "rgba(236, 72, 153, 0.35)";
 
+  // Outer glowing pulse ring
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2.5;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 12;
+  ctx.beginPath();
+  ctx.arc(x, y, radius + 5, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Radial aura
+  const grad = ctx.createRadialGradient(x, y, 2, x, y, radius + 12);
+  grad.addColorStop(0, "#ffffff");
+  grad.addColorStop(0.35, color);
+  grad.addColorStop(1, "rgba(0,0,0,0)");
   ctx.fillStyle = grad;
   ctx.beginPath();
-  ctx.arc(x, y, radius + 8, 0, Math.PI * 2);
+  ctx.arc(x, y, radius + 12, 0, Math.PI * 2);
   ctx.fill();
 
-  // Core orb
+  // Core white tip
   ctx.fillStyle = "#ffffff";
   ctx.beginPath();
-  ctx.arc(x, y, radius * 0.5, 0, Math.PI * 2);
+  ctx.arc(x, y, radius * 0.45, 0, Math.PI * 2);
   ctx.fill();
+
+  // Floating Label: "INDEX" or "MID"
+  ctx.font = "bold 11px 'JetBrains Mono', monospace";
+  ctx.fillStyle = color;
+  ctx.textAlign = "center";
+  ctx.shadowColor = "rgba(0,0,0,0.9)";
+  ctx.shadowBlur = 4;
+  const label = isIndex ? "INDEX" : "MID";
+  ctx.fillText(label, x, y - radius - 8);
 
   ctx.restore();
 }
@@ -1467,8 +1530,13 @@ splashStartBtn.addEventListener("click", () => {
   startCameraAndTracking();
 });
 
+testSoundBtn.addEventListener("click", () => {
+  ensureAudioRunning();
+  triggerDrumPad("snare");
+});
+
 muteBtn.addEventListener("click", () => {
-  initAudio();
+  ensureAudioRunning();
   isMuted = !isMuted;
   muteBtn.textContent = isMuted ? "🔇" : "🔊";
   muteBtn.classList.toggle("muted", isMuted);
@@ -1476,7 +1544,7 @@ muteBtn.addEventListener("click", () => {
 });
 
 volSlider.addEventListener("input", e => {
-  initAudio();
+  ensureAudioRunning();
   updateVolume(parseFloat(e.target.value) / 100);
 });
 
@@ -1496,7 +1564,7 @@ window.addEventListener("resize", () => {
 
 // Unlock audio on any initial click / tap
 window.addEventListener("pointerdown", () => {
-  initAudio();
+  ensureAudioRunning();
 }, { once: true });
 
 })();
